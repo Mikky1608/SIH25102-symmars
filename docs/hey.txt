@@ -1,0 +1,5 @@
+This should have:
+
+│   ├── architecture.png
+│   ├── SIH-pitch-deck.pptx
+│   └── readme-extras.md

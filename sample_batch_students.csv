@@ -1,0 +1,11 @@
+student_id,student_name,student_email,institute_id,test_score,Average_Attendance,Attendance_Decline_Score,Week_1_Attendance,Week_2_Attendance,Week_3_Attendance,Week_4_Attendance,Week_5_Attendance,Week_6_Attendance,Week_7_Attendance,Week_8_Attendance,Week_9_Attendance,Week_10_Attendance,Week_11_Attendance,Week_12_Attendance
+1001,John Doe,johndoe@gmail.com,1,85,78.3,5.0,95,90,88,85,82,80,78,75,72,70,68,65
+1002,Jane Smith,jane.smith02@gmail.com,1,45,32.5,15.0,60,55,50,45,40,35,30,25,20,15,10,5
+1003,Bob Wilson,bwilson@gmail.com,2,92,86.5,2.0,100,98,95,92,90,88,85,82,80,78,75,72
+1004,Alice Brown,alice.b@gmail.com,1,67,65.2,8.5,80,75,70,65,60,55,50,45,40,35,30,25
+1005,Charlie Davis,charlie.davis@gmail.com,2,88,89.1,1.2,95,94,93,92,91,90,89,88,87,86,85,84
+1006,Diana Miller,dianamiller@gmail.com,1,52,45.8,12.3,70,65,60,55,50,45,40,35,30,25,20,15
+1007,Edward Wilson,edward.wilson07@gmail.com,2,79,82.4,3.8,90,88,86,84,82,80,78,76,74,72,70,68
+1008,Fiona Garcia,fgarcia@gmail.com,1,41,28.9,18.7,55,50,45,40,35,30,25,20,15,10,8,5
+1009,George Lee,george.l@gmail.com,2,94,91.7,0.8,98,97,96,95,94,93,92,91,90,89,88,87
+1010,Helen Martinez,helen.martinez@gmail.com,1,73,71.5,6.2,85,82,79,76,73,70,67,64,61,58,55,52
