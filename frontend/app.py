@@ -60,6 +60,8 @@ except:
 
 # Ensure consistency
 API_URL = API_URL.strip().rstrip('/')
+if API_URL and not API_URL.startswith(('http://', 'https://')):
+    API_URL = f"https://{API_URL}"
 
 def check_api_health():
     """Check if the backend API is running"""
