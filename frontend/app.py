@@ -47,7 +47,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Backend API URL
-API_URL = "http://localhost:5000"
+API_URL = "http://127.0.0.1:5000"
 
 def check_api_health():
     """Check if the backend API is running"""
@@ -274,6 +274,10 @@ def batch_prediction():
     # File upload
     uploaded_file = st.file_uploader("Upload CSV file with student data", type=['csv'])
     
+    # Initialize session state for batch results
+    if 'batch_results' not in st.session_state:
+        st.session_state.batch_results = None
+    
     if uploaded_file is not None:
         try:
             df = pd.read_csv(uploaded_file)
@@ -318,168 +322,169 @@ def batch_prediction():
                 
                 if "error" in result:
                     st.error(f"Batch prediction failed: {result['error']}")
+                    st.session_state.batch_results = None
                 else:
-                    results = result["results"]
+                    # Store results in session state to persist between reruns
+                    st.session_state.batch_results = result["results"]
+            
+            # If we have results in session state, display them
+            if st.session_state.batch_results is not None:
+                results = st.session_state.batch_results
+                
+                # Create results DataFrame
+                results_df = pd.DataFrame(results)
                     
-                    # Create results DataFrame
-                    results_df = pd.DataFrame(results)
+                # Display summary
+                st.subheader("📈 Prediction Summary")
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                total_students = len(results_df)
+                high_risk = len(results_df[results_df['risk_level'] == 'High'])
+                medium_risk = len(results_df[results_df['risk_level'] == 'Medium'])
+                low_risk = len(results_df[results_df['risk_level'] == 'Low'])
+                
+                col1.metric("Total Students", total_students)
+                col2.metric("High Risk", high_risk, delta=f"{high_risk/total_students*100:.1f}%")
+                col3.metric("Medium Risk", medium_risk, delta=f"{medium_risk/total_students*100:.1f}%")
+                col4.metric("Low Risk", low_risk, delta=f"{low_risk/total_students*100:.1f}%")
                     
-                    # Display summary
-                    st.subheader("📈 Prediction Summary")
-                    
-                    col1, col2, col3, col4 = st.columns(4)
-                    
-                    total_students = len(results_df)
-                    high_risk = len(results_df[results_df['risk_level'] == 'High'])
-                    medium_risk = len(results_df[results_df['risk_level'] == 'Medium'])
-                    low_risk = len(results_df[results_df['risk_level'] == 'Low'])
-                    
-                    col1.metric("Total Students", total_students)
-                    col2.metric("High Risk", high_risk, delta=f"{high_risk/total_students*100:.1f}%")
-                    col3.metric("Medium Risk", medium_risk, delta=f"{medium_risk/total_students*100:.1f}%")
-                    col4.metric("Low Risk", low_risk, delta=f"{low_risk/total_students*100:.1f}%")
-                    
-                    # Risk distribution chart
-                    risk_counts = results_df['risk_level'].value_counts()
-                    fig = px.pie(values=risk_counts.values, names=risk_counts.index, 
-                               title="Risk Level Distribution",
-                               color_discrete_map={'Low': 'green', 'Medium': 'orange', 'High': 'red'})
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # Detailed results
-                    st.subheader("📋 Detailed Results")
-                    
-                    # Filter options
-                    risk_filter = st.selectbox("Filter by Risk Level", ["All", "High", "Medium", "Low"])
-                    
-                    if risk_filter != "All":
-                        filtered_df = results_df[results_df['risk_level'] == risk_filter]
+                # Risk distribution chart
+                risk_counts = results_df['risk_level'].value_counts()
+                fig = px.pie(values=risk_counts.values, names=risk_counts.index, 
+                           title="Risk Level Distribution",
+                           color_discrete_map={'Low': 'green', 'Medium': 'orange', 'High': 'red'})
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Detailed results
+                st.subheader("📋 Detailed Results")
+                
+                # Filter options
+                risk_filter = st.selectbox("Filter by Risk Level", ["All", "High", "Medium", "Low"])
+                
+                if risk_filter != "All":
+                    filtered_df = results_df[results_df['risk_level'] == risk_filter]
+                else:
+                    filtered_df = results_df
+                
+                # Style the dataframe
+                def style_risk_level(val):
+                    if val == 'High':
+                        return 'background-color: #ffcccc'
+                    elif val == 'Medium':
+                        return 'background-color: #fff2cc'
                     else:
-                        filtered_df = results_df
+                        return 'background-color: #ccffcc'
+                
+                styled_df = filtered_df.style.applymap(style_risk_level, subset=['risk_level'])
+                st.dataframe(styled_df, use_container_width=True)
+                
+                # Download results
+                csv = results_df.to_csv(index=False)
+                st.download_button(
+                    label="📥 Download Results as CSV",
+                    data=csv,
+                    file_name="student_risk_predictions.csv",
+                    mime="text/csv"
+                )
+                
+                # Email notification section
+                st.subheader("📧 Email Notifications")
+                
+                # Check email service availability
+                email_config = check_email_service()
+                
+                if email_config.get('email_service_available', False):
+                    # Count students who would receive emails
+                    at_risk_students = results_df[results_df['risk_level'].isin(['Medium', 'High'])]
                     
-                    # Style the dataframe
-                    def style_risk_level(val):
-                        if val == 'High':
-                            return 'background-color: #ffcccc'
-                        elif val == 'Medium':
-                            return 'background-color: #fff2cc'
-                        else:
-                            return 'background-color: #ccffcc'
-                    
-                    styled_df = filtered_df.style.applymap(style_risk_level, subset=['risk_level'])
-                    st.dataframe(styled_df, use_container_width=True)
-                    
-                    # Download results
-                    csv = results_df.to_csv(index=False)
-                    st.download_button(
-                        label="📥 Download Results as CSV",
-                        data=csv,
-                        file_name="student_risk_predictions.csv",
-                        mime="text/csv"
-                    )
-                    
-                    # Email notification section
-                    st.subheader("📧 Email Notifications")
-                    
-                    # Check email service availability
-                    email_config = check_email_service()
-                    
-                    if email_config.get('email_service_available', False):
-                        # Count students who would receive emails
-                        at_risk_students = results_df[results_df['risk_level'].isin(['Medium', 'High'])]
+                    if len(at_risk_students) > 0:
+                        st.info(f"📊 {len(at_risk_students)} students (Medium/High risk) are eligible for email notifications")
                         
-                        if len(at_risk_students) > 0:
-                            st.info(f"📊 {len(at_risk_students)} students (Medium/High risk) are eligible for email notifications")
+                        # Show preview of students who will receive emails
+                        with st.expander("👀 Preview Students Who Will Receive Emails"):
+                            preview_cols = ['student_name', 'student_email', 'risk_level', 'risk_score']
+                            available_cols = [col for col in preview_cols if col in at_risk_students.columns]
+                            st.dataframe(at_risk_students[available_cols])
+                        
+                        # Email sending button
+                        if st.button("📧 Send Email Notifications", type="secondary", help="Send personalized emails to Medium and High risk students"):
+                            # Prepare student data for email
+                            students_for_email = []
+                            for _, row in at_risk_students.iterrows():
+                                student_data = row.to_dict()
+                                students_for_email.append(student_data)
                             
-                            # Show preview of students who will receive emails
-                            with st.expander("👀 Preview Students Who Will Receive Emails"):
-                                preview_cols = ['student_name', 'student_email', 'risk_level', 'risk_score']
-                                available_cols = [col for col in preview_cols if col in at_risk_students.columns]
+                            # Send emails
+                            with st.spinner("Sending email notifications..."):
+                                email_result = send_batch_emails(students_for_email)
+                            
+                            if "error" in email_result:
+                                st.error(f"❌ Email sending failed: {email_result['error']}")
+                            else:
+                                summary = email_result.get('summary', {})
+                                
+                                # Show visual "Pop up" notifications
+                                st.balloons()
+                                st.toast("✅ All emails have been processed successfully!", icon='📧')
+                                
+                                st.success(f"✅ Email notifications sent successfully!")
+                                
+                                # Show email summary in a nice card
+                                with st.container():
+                                    col_a, col_b, col_c = st.columns(3)
+                                    # Ensure summary is a dict for linting/runtime safety
+                                    safe_summary = summary if isinstance(summary, dict) else {}
+                                    col_a.metric("📧 Emails Sent", safe_summary.get('emails_sent', 0))
+                                    col_b.metric("❌ Failed", safe_summary.get('emails_failed', 0))
+                                    col_c.metric("📊 Processed", safe_summary.get('total_processed', 0))
+                                
+                                # Show detailed results
+                                if st.checkbox("🔍 Show detailed email logs"):
+                                    details = email_result.get('details', [])
+                                    email_details_df = pd.DataFrame(details)
+                                    if not email_details_df.empty:
+                                        st.dataframe(email_details_df[['student_name', 'student_email', 'risk_level', 'success', 'message']], use_container_width=True)
+                    else:
+                        st.info("✅ No students require email notifications (all are Low risk)")
+                    
+                else:
+                    st.warning("⚠️ Email service is not configured")
+                    
+                    with st.expander("📧 Email Setup Instructions"):
+                        st.markdown("""
+                        **To enable email notifications:**
+                        
+                        1. **Set up Gmail App Password:**
+                           - Go to your Google Account settings
+                           - Enable 2-Factor Authentication
+                           - Generate an App Password for this application
+                        
+                        2. **Configure Environment Variables:**
+                           ```bash
+                           SENDER_EMAIL=your-email@gmail.com
+                           SENDER_PASSWORD=your-app-password
+                           ```
+                        
+                        3. **Restart the backend server**
+                        
+                        4. **Test the email functionality**
+                        
+                        **Note:** The system uses Gmail SMTP for sending emails.
+                        """)
+                    
+                    # Show which students would receive emails if configured
+                    at_risk_students = results_df[results_df['risk_level'].isin(['Medium', 'High'])]
+                    if len(at_risk_students) > 0:
+                        st.info(f"📊 {len(at_risk_students)} students would receive email notifications if email service was configured")
+                        
+                        with st.expander("👀 Students Who Would Receive Emails"):
+                            preview_cols = ['student_name', 'student_email', 'risk_level', 'risk_score']
+                            available_cols = [col for col in preview_cols if col in at_risk_students.columns]
+                            if available_cols:
                                 st.dataframe(at_risk_students[available_cols])
-                            
-                            # Email sending button
-                            col1, col2 = st.columns([1, 3])
-                            
-                            with col1:
-                                if st.button("📧 Send Email Notifications", type="secondary", help="Send personalized emails to Medium and High risk students"):
-                                    # Prepare student data for email
-                                    students_for_email = []
-                                    for _, row in at_risk_students.iterrows():
-                                        student_data = row.to_dict()
-                                        students_for_email.append(student_data)
-                                    
-                                    # Send emails
-                                    with st.spinner("Sending email notifications..."):
-                                        email_result = send_batch_emails(students_for_email)
-                                    
-                                    if "error" in email_result:
-                                        st.error(f"❌ Email sending failed: {email_result['error']}")
-                                    else:
-                                        summary = email_result.get('summary', {})
-                                        st.success(f"✅ Email notifications sent!")
-                                        
-                                        # Show email summary
-                                        col_a, col_b, col_c = st.columns(3)
-                                        col_a.metric("📧 Emails Sent", summary.get('emails_sent', 0))
-                                        col_b.metric("❌ Failed", summary.get('emails_failed', 0))
-                                        col_c.metric("📊 Processed", summary.get('total_processed', 0))
-                                        
-                                        # Show detailed results
-                                        if st.checkbox("Show Email Details"):
-                                            details = email_result.get('details', [])
-                                            email_details_df = pd.DataFrame(details)
-                                            if not email_details_df.empty:
-                                                st.dataframe(email_details_df[['student_name', 'student_email', 'risk_level', 'success', 'message']])
-                            
-                            with col2:
-                                st.info("""
-                                **📧 Email Features:**
-                                - Personalized messages based on risk level
-                                - Professional HTML templates
-                                - Specific recommendations for each student
-                                - Contact information for support
-                                - Only sent to Medium/High risk students
-                                """)
-                        else:
-                            st.info("✅ No students require email notifications (all are Low risk)")
-                    
-                    else:
-                        st.warning("⚠️ Email service is not configured")
-                        
-                        with st.expander("📧 Email Setup Instructions"):
-                            st.markdown("""
-                            **To enable email notifications:**
-                            
-                            1. **Set up Gmail App Password:**
-                               - Go to your Google Account settings
-                               - Enable 2-Factor Authentication
-                               - Generate an App Password for this application
-                            
-                            2. **Configure Environment Variables:**
-                               ```bash
-                               SENDER_EMAIL=your-email@gmail.com
-                               SENDER_PASSWORD=your-app-password
-                               ```
-                            
-                            3. **Restart the backend server**
-                            
-                            4. **Test the email functionality**
-                            
-                            **Note:** The system uses Gmail SMTP for sending emails.
-                            """)
-                        
-                        # Show which students would receive emails if configured
-                        at_risk_students = results_df[results_df['risk_level'].isin(['Medium', 'High'])]
-                        if len(at_risk_students) > 0:
-                            st.info(f"📊 {len(at_risk_students)} students would receive email notifications if email service was configured")
-                            
-                            with st.expander("👀 Students Who Would Receive Emails"):
-                                preview_cols = ['student_name', 'student_email', 'risk_level', 'risk_score']
-                                available_cols = [col for col in preview_cols if col in at_risk_students.columns]
-                                if available_cols:
-                                    st.dataframe(at_risk_students[available_cols])
-                                else:
-                                    st.dataframe(at_risk_students)
+                            else:
+                                st.dataframe(at_risk_students)
         
         except Exception as e:
             st.error(f"Error processing file: {str(e)}")

@@ -1,229 +1,249 @@
-import smtplib
-import ssl
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.base import MIMEBase
-from email import encoders
-import os
-from datetime import datetime
-import logging
+"""
+Email Service - Gmail SMTP (Free & Open Source)
+Uses Python's built-in smtplib + email.mime — no third-party API needed.
+"""
 
-# Configure logging
+import os
+import smtplib
+import logging
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from datetime import datetime
+from typing import Dict, List
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class EmailService:
+    """
+    Free email service using Gmail SMTP via Python's built-in smtplib.
+    Requires a Gmail App Password (not your regular Gmail password).
+    """
+
     def __init__(self):
-        # Email configuration - using Gmail SMTP
-        self.smtp_server = "smtp.gmail.com"
-        self.smtp_port = 587
-        self.sender_email = os.getenv('SENDER_EMAIL', 'your-email@gmail.com')
-        self.sender_password = os.getenv('SENDER_PASSWORD', 'your-app-password')
-        self.sender_name = "Student Success Center"
-        
-    def create_risk_email_template(self, student_data, risk_level):
-        """Create personalized email template based on risk level"""
-        
-        student_name = student_data.get('student_name', 'Student')
-        student_id = student_data.get('student_id', 'N/A')
-        risk_score = student_data.get('risk_score', 0)
-        avg_attendance = student_data.get('Average_Attendance', 0)
-        decline_score = student_data.get('Attendance_Decline_Score', 0)
-        
-        # Email templates based on risk level
-        if risk_level == "High":
-            subject = f"🚨 Urgent: Academic Support Needed - {student_name}"
-            color = "#dc3545"  # Red
-            priority = "HIGH PRIORITY"
-            message_tone = "immediate attention"
-            recommendations = [
-                "Schedule an immediate meeting with your academic advisor",
-                "Contact the Student Success Center within 24 hours",
-                "Review your current course load and attendance patterns",
-                "Consider academic support services and tutoring programs",
-                "Speak with your instructors about makeup opportunities"
-            ]
-        else:  # Medium risk
-            subject = f"📊 Academic Performance Alert - {student_name}"
-            color = "#ffc107"  # Yellow
-            priority = "MEDIUM PRIORITY"
-            message_tone = "proactive support"
-            recommendations = [
-                "Schedule a meeting with your academic advisor this week",
-                "Review your attendance and study habits",
-                "Consider joining study groups or tutoring sessions",
-                "Reach out to instructors if you're struggling with coursework",
-                "Utilize campus resources for academic support"
-            ]
-        
-        # Create HTML email template
-        html_template = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>{subject}</title>
-        </head>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-            
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
-                <h1 style="margin: 0; font-size: 24px;">🎓 Student Success Center</h1>
-                <p style="margin: 10px 0 0 0; opacity: 0.9;">Academic Performance Monitoring System</p>
-            </div>
-            
-            <div style="background: white; padding: 30px; border: 1px solid #ddd; border-top: none;">
-                
-                <div style="background: {color}; color: white; padding: 15px; border-radius: 5px; margin-bottom: 25px; text-align: center;">
-                    <h2 style="margin: 0; font-size: 18px;">{priority}</h2>
-                    <p style="margin: 5px 0 0 0;">This message requires {message_tone}</p>
-                </div>
-                
-                <h2 style="color: #333; margin-bottom: 20px;">Dear {student_name},</h2>
-                
-                <p>We hope this message finds you well. Our academic monitoring system has identified some patterns in your academic performance that we'd like to discuss with you.</p>
-                
-                <div style="background: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0;">
-                    <h3 style="color: #495057; margin-top: 0;">📊 Your Current Academic Status</h3>
-                    <table style="width: 100%; border-collapse: collapse;">
-                        <tr>
-                            <td style="padding: 8px 0; border-bottom: 1px solid #dee2e6;"><strong>Student ID:</strong></td>
-                            <td style="padding: 8px 0; border-bottom: 1px solid #dee2e6;">{student_id}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px 0; border-bottom: 1px solid #dee2e6;"><strong>Risk Level:</strong></td>
-                            <td style="padding: 8px 0; border-bottom: 1px solid #dee2e6; color: {color}; font-weight: bold;">{risk_level}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px 0; border-bottom: 1px solid #dee2e6;"><strong>Risk Score:</strong></td>
-                            <td style="padding: 8px 0; border-bottom: 1px solid #dee2e6;">{risk_score:.2f}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px 0; border-bottom: 1px solid #dee2e6;"><strong>Average Attendance:</strong></td>
-                            <td style="padding: 8px 0; border-bottom: 1px solid #dee2e6;">{avg_attendance:.1f}%</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px 0;"><strong>Attendance Trend:</strong></td>
-                            <td style="padding: 8px 0;">{"Declining" if decline_score > 5 else "Stable"}</td>
-                        </tr>
-                    </table>
-                </div>
-                
-                <h3 style="color: #495057;">🎯 Recommended Actions</h3>
-                <ul style="padding-left: 20px;">
-        """
-        
-        for recommendation in recommendations:
-            html_template += f"<li style='margin-bottom: 8px;'>{recommendation}</li>"
-        
-        html_template += f"""
-                </ul>
-                
-                <div style="background: #e3f2fd; padding: 20px; border-radius: 5px; margin: 25px 0; border-left: 4px solid #2196f3;">
-                    <h4 style="color: #1976d2; margin-top: 0;">💡 Remember</h4>
-                    <p style="margin-bottom: 0;">Academic challenges are temporary, and we're here to support you every step of the way. Early intervention is key to academic success, and taking action now can make a significant difference in your educational journey.</p>
-                </div>
-                
-                <h3 style="color: #495057;">📞 Get Help Now</h3>
-                <div style="background: #f1f8e9; padding: 15px; border-radius: 5px; margin: 15px 0;">
-                    <p style="margin: 0;"><strong>📧 Email:</strong> success@institute.edu</p>
-                    <p style="margin: 5px 0;"><strong>📱 Phone:</strong> (555) 123-4567</p>
-                    <p style="margin: 5px 0;"><strong>🏢 Office:</strong> Student Success Center, Room 201</p>
-                    <p style="margin: 5px 0 0 0;"><strong>🕒 Hours:</strong> Monday-Friday, 9:00 AM - 5:00 PM</p>
-                </div>
-                
-                <p style="margin-top: 25px;">We believe in your potential and are committed to helping you succeed. Please don't hesitate to reach out if you have any questions or concerns.</p>
-                
-                <p>Best regards,<br>
-                <strong>Student Success Team</strong><br>
-                Academic Support Services</p>
-                
-            </div>
-            
-            <div style="background: #6c757d; color: white; padding: 20px; border-radius: 0 0 10px 10px; text-align: center; font-size: 12px;">
-                <p style="margin: 0;">This is an automated message from the Student Success Center</p>
-                <p style="margin: 5px 0 0 0;">Generated on {datetime.now().strftime('%B %d, %Y at %I:%M %p')}</p>
-            </div>
-            
-        </body>
-        </html>
-        """
-        
-        return subject, html_template
-    
-    def send_email(self, recipient_email, subject, html_content, student_name="Student"):
-        """Send email to recipient"""
+        self.gmail_user = os.getenv('GMAIL_USER', '')
+        self.gmail_password = os.getenv('GMAIL_APP_PASSWORD', '')
+        self.from_name = os.getenv('FROM_NAME', 'Student Success Center')
+        self.admin_email = os.getenv('ADMIN_EMAIL', self.gmail_user)
+        self.smtp_host = 'smtp.gmail.com'
+        self.smtp_port = 465  # SSL
+
+        # Demo mode — redirect all emails to one address for testing
+        self.demo_mode = os.getenv('DEMO_MODE', 'false').lower() == 'true'
+        self.demo_email = os.getenv('DEMO_EMAIL', '')
+
+        # Expose api_key for compatibility with backend/app.py checks
+        self.api_key = self.gmail_password
+        self.from_email = self.gmail_user
+
+        if not self.gmail_user or not self.gmail_password:
+            logger.warning("[WARN] GMAIL_USER or GMAIL_APP_PASSWORD not set in .env")
+        else:
+            logger.info("[OK] Gmail SMTP email service ready")
+            if self.demo_mode:
+                logger.info(f"[DEMO] All emails will be redirected to: {self.demo_email}")
+
+    def send_email(self, to_email: str, subject: str, html_content: str, text_content: str = "") -> Dict:
+        """Send an email via Gmail SMTP using SSL."""
+
+        if not self.gmail_user or not self.gmail_password:
+            return {"success": False, "message": "Gmail credentials not configured in .env"}
+
+        # Demo mode: redirect to test address
+        original_email = to_email
+        if self.demo_mode and self.demo_email:
+            to_email = self.demo_email
+            logger.info(f"[DEMO] Redirecting {original_email} -> {to_email}")
+
         try:
-            # Create message
-            message = MIMEMultipart("alternative")
-            message["Subject"] = subject
-            message["From"] = f"{self.sender_name} <{self.sender_email}>"
-            message["To"] = recipient_email
-            
-            # Create HTML part
-            html_part = MIMEText(html_content, "html")
-            message.attach(html_part)
-            
-            # Create secure connection and send email
-            context = ssl.create_default_context()
-            
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                server.starttls(context=context)
-                server.login(self.sender_email, self.sender_password)
-                server.send_message(message)
-            
-            logger.info(f"Email sent successfully to {recipient_email} ({student_name})")
-            return {"success": True, "message": f"Email sent to {student_name}"}
-            
+            # Build the MIME message
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = subject
+            msg['From'] = f"{self.from_name} <{self.gmail_user}>"
+            msg['To'] = to_email
+
+            # Attach plain text and HTML parts
+            if text_content:
+                msg.attach(MIMEText(text_content, 'plain'))
+            msg.attach(MIMEText(html_content, 'html'))
+
+            # Send via Gmail SMTP SSL
+            logger.info(f"[SMTP] Connecting to {self.smtp_host}:{self.smtp_port}")
+            with smtplib.SMTP_SSL(self.smtp_host, self.smtp_port) as server:
+                server.login(self.gmail_user, self.gmail_password)
+                server.sendmail(self.gmail_user, to_email, msg.as_string())
+
+            logger.info(f"[OK] Email sent successfully to {to_email}")
+            return {
+                "success": True,
+                "message": "Email sent successfully via Gmail SMTP",
+                "recipient": to_email,
+                "original_recipient": original_email
+            }
+
+        except smtplib.SMTPAuthenticationError:
+            msg = "Gmail authentication failed. Check GMAIL_USER and GMAIL_APP_PASSWORD in .env"
+            logger.error(f"[ERROR] {msg}")
+            return {"success": False, "message": msg}
+        except smtplib.SMTPException as e:
+            logger.error(f"[ERROR] SMTP error: {e}")
+            return {"success": False, "message": f"SMTP error: {str(e)}"}
         except Exception as e:
-            logger.error(f"Failed to send email to {recipient_email}: {str(e)}")
-            return {"success": False, "message": f"Failed to send email: {str(e)}"}
-    
-    def send_batch_emails(self, students_data):
-        """Send emails to multiple students based on their risk levels"""
-        results = []
+            logger.error(f"[ERROR] Unexpected error: {type(e).__name__}: {e}")
+            return {"success": False, "message": str(e)}
+
+    def create_risk_email_template(self, student_data: Dict, risk_level: str) -> tuple:
+        """Create email template — returns (subject, html, text)."""
+        name = student_data.get('student_name', 'Student')
+        student_id = student_data.get('student_id', 'N/A')
+        risk_score = student_data.get('risk_score', 0) * 100
+        attendance = student_data.get('Average_Attendance', 0)
+        decline = student_data.get('Attendance_Decline_Score', 0)
+
+        color = "#dc3545" if risk_level == "High" else "#ffc107"
+        priority = "HIGH PRIORITY" if risk_level == "High" else "MEDIUM PRIORITY"
+
+        subject = f"Academic Alert: {name} - {priority}"
+
+        html = f"""<!DOCTYPE html>
+<html>
+<body style="font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f4f4f4;">
+  <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+    <div style="background: {color}; color: white; padding: 30px; text-align: center;">
+      <h1 style="margin: 0; font-size: 24px;">Student Success Center</h1>
+      <p style="margin: 10px 0 0 0; font-size: 16px; font-weight: bold;">{priority}</p>
+    </div>
+    <div style="padding: 30px;">
+      <h2 style="color: #333;">Dear {name},</h2>
+      <p style="color: #555;">Our AI-powered system has identified attendance patterns that require your immediate attention.</p>
+
+      <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid {color};">
+        <h3 style="color: {color}; margin-top: 0;">Your Academic Metrics</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr style="border-bottom: 1px solid #eee;"><td style="padding: 8px 0;"><strong>Student ID:</strong></td><td style="padding: 8px 0;">{student_id}</td></tr>
+          <tr style="border-bottom: 1px solid #eee;"><td style="padding: 8px 0;"><strong>Risk Score:</strong></td><td style="padding: 8px 0; color: {color}; font-weight: bold;">{risk_score:.1f}%</td></tr>
+          <tr style="border-bottom: 1px solid #eee;"><td style="padding: 8px 0;"><strong>Attendance:</strong></td><td style="padding: 8px 0;">{attendance:.1f}%</td></tr>
+          <tr style="border-bottom: 1px solid #eee;"><td style="padding: 8px 0;"><strong>Decline Score:</strong></td><td style="padding: 8px 0;">{decline:.1f}</td></tr>
+          <tr><td style="padding: 8px 0;"><strong>Risk Level:</strong></td><td style="padding: 8px 0; color: {color}; font-weight: bold;">{risk_level.upper()}</td></tr>
+        </table>
+      </div>
+
+      <div style="background: #e8f4f8; border-left: 4px solid #17a2b8; padding: 20px; margin: 20px 0;">
+        <h3 style="color: #17a2b8; margin-top: 0;">Recommended Actions</h3>
+        <ul style="color: #555; margin: 0; padding-left: 20px;">
+          <li>Schedule a meeting with your academic advisor</li>
+          <li>Contact the Student Success Center</li>
+          <li>Review your attendance patterns</li>
+          <li>Access academic support services</li>
+        </ul>
+      </div>
+
+      <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 20px; margin: 20px 0;">
+        <h3 style="color: #856404; margin-top: 0;">Need Help?</h3>
+        <p style="margin: 0; color: #555;">
+          <strong>Student Success Center</strong><br>
+          Email: {self.admin_email}<br>
+          Office Hours: Mon-Fri, 9 AM - 5 PM
+        </p>
+      </div>
+
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="mailto:{self.admin_email}"
+           style="display: inline-block; background: {color}; color: white; padding: 15px 40px;
+                  text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px;">
+          Contact Support
+        </a>
+      </div>
+    </div>
+    <div style="background: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #dee2e6;">
+      <p style="color: #999; font-size: 12px; margin: 0;">
+        &copy; 2026 Student Success Center &mdash; AI-Powered Dropout Prediction System<br>
+        Generated on {datetime.now().strftime('%B %d, %Y at %I:%M %p')}
+      </p>
+    </div>
+  </div>
+</body>
+</html>"""
+
+        text = f"""ACADEMIC ALERT — {priority}
+
+Dear {name},
+
+Our AI system has flagged your academic metrics for attention.
+
+METRICS:
+  Student ID   : {student_id}
+  Risk Score   : {risk_score:.1f}%
+  Attendance   : {attendance:.1f}%
+  Decline Score: {decline:.1f}
+  Risk Level   : {risk_level.upper()}
+
+RECOMMENDED ACTIONS:
+  - Schedule a meeting with your academic advisor
+  - Contact the Student Success Center
+  - Review your attendance patterns
+
+CONTACT:
+  Email : {self.admin_email}
+  Hours : Mon-Fri, 9 AM - 5 PM
+
+© 2026 Student Success Center
+"""
+        return subject, html, text
+
+    def send_batch_emails(self, students_data: List[Dict]) -> Dict:
+        """Send emails to multiple students (Medium/High risk only)."""
+        total_processed = len(students_data)
         sent_count = 0
         failed_count = 0
-        
+        results = []
+
         for student in students_data:
             risk_level = student.get('risk_level', 'Low')
-            
-            # Only send emails for Medium and High risk students
-            if risk_level in ['Medium', 'High']:
-                student_email = student.get('student_email', '')
-                student_name = student.get('student_name', 'Student')
-                
-                if student_email and '@' in student_email:
-                    # Create personalized email
-                    subject, html_content = self.create_risk_email_template(student, risk_level)
-                    
-                    # Send email
-                    result = self.send_email(student_email, subject, html_content, student_name)
-                    result['student_name'] = student_name
-                    result['student_email'] = student_email
-                    result['risk_level'] = risk_level
-                    results.append(result)
-                    
-                    if result['success']:
-                        sent_count += 1
-                    else:
-                        failed_count += 1
-                else:
-                    results.append({
-                        'success': False,
-                        'message': 'Invalid email address',
-                        'student_name': student_name,
-                        'student_email': student_email,
-                        'risk_level': risk_level
-                    })
-                    failed_count += 1
-        
+
+            if risk_level not in ['Medium', 'High']:
+                results.append({
+                    'student_name': student.get('student_name'),
+                    'status': 'skipped',
+                    'message': 'Low risk — no email needed'
+                })
+                continue
+
+            subject, html, text = self.create_risk_email_template(student, risk_level)
+            result = self.send_email(
+                student.get('student_email', ''),
+                subject,
+                html,
+                text
+            )
+
+            if result['success']:
+                sent_count += 1
+                results.append({
+                    'student_name': student.get('student_name'),
+                    'status': 'sent',
+                    'message': result.get('message', '')
+                })
+            else:
+                failed_count += 1
+                results.append({
+                    'student_name': student.get('student_name'),
+                    'status': 'failed',
+                    'message': result.get('message', '')
+                })
+
         return {
-            'total_processed': len([s for s in students_data if s.get('risk_level') in ['Medium', 'High']]),
+            'total_processed': total_processed,
             'sent_count': sent_count,
             'failed_count': failed_count,
             'results': results
         }
 
-# Create global email service instance
+
+# Singleton instance
 email_service = EmailService()

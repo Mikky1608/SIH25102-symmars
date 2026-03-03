@@ -6,17 +6,27 @@ import numpy as np
 import os
 import sys
 
+# Fix Unicode output on Windows
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 # Add the ml directory to the path to import the prediction function
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'ml'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'notifications'))
 
-# Import email service
+# Import email service - Resend API only
 try:
     from email_service import email_service
     EMAIL_SERVICE_AVAILABLE = True
-except ImportError as e:
-    print(f"⚠️  Email service not available: {e}")
+    EMAIL_SERVICE_TYPE = "Gmail SMTP"
+    print(f"[OK] Email service loaded: Gmail SMTP")
+    print(f"[INFO] API Key: {'Configured' if email_service.api_key else 'Not set'}")
+except Exception as e:
+    print(f"[ERROR] Email service error: {e}")
     EMAIL_SERVICE_AVAILABLE = False
+    EMAIL_SERVICE_TYPE = "None"
+    email_service = None
 
 app = Flask(__name__)
 CORS(app)
@@ -27,9 +37,9 @@ try:
     decision_tree_model = joblib.load(os.path.join(MODEL_PATH, 'decision_tree_model.pkl'))
     logistic_model = joblib.load(os.path.join(MODEL_PATH, 'logistic_model.pkl'))
     scaler = joblib.load(os.path.join(MODEL_PATH, 'scaler.pkl'))
-    print("✅ Models loaded successfully!")
+    print("[OK] Models loaded successfully!")
 except Exception as e:
-    print(f"❌ Error loading models: {e}")
+    print(f"[ERROR] Error loading models: {e}")
     decision_tree_model = None
     logistic_model = None
     scaler = None
@@ -113,7 +123,9 @@ class AttendanceRiskPredictor:
                 "prediction": prediction,
                 "risk_score": float(risk_score),
                 "risk_level": risk_level,
-                "student_id": student_data.get('student_id', 'Unknown')
+                "student_id": student_data.get('student_id', 'Unknown'),
+                "student_name": student_data.get('student_name', 'Student'),
+                "student_email": student_data.get('student_email', '')
             }
             
         except Exception as e:
@@ -219,6 +231,10 @@ def send_risk_email():
     try:
         data = request.json
         
+        print(f"[EMAIL] Received email request for: {data.get('student_name', 'Unknown')}")
+        print(f"[EMAIL] Email service type: {EMAIL_SERVICE_TYPE}")
+        print(f"[EMAIL] Email service class: {type(email_service)}")
+        
         if not data:
             return jsonify({"error": "No data provided"}), 400
         
@@ -236,14 +252,17 @@ def send_risk_email():
             })
         
         # Create email template and send
-        subject, html_content = email_service.create_risk_email_template(data, data['risk_level'])
+        print(f"[EMAIL] Creating email template...")
+        subject, html_content, text_content = email_service.create_risk_email_template(data, data['risk_level'])
+        print(f"[EMAIL] Sending email to: {data['student_email']}")
         result = email_service.send_email(
             data['student_email'], 
             subject, 
             html_content, 
-            data['student_name']
+            text_content
         )
         
+        print(f"[EMAIL] Email result: {result}")
         return jsonify(result)
         
     except Exception as e:
@@ -282,18 +301,21 @@ def get_email_config():
     """Get email service configuration status"""
     return jsonify({
         "email_service_available": EMAIL_SERVICE_AVAILABLE,
-        "smtp_server": email_service.smtp_server if EMAIL_SERVICE_AVAILABLE else None,
-        "sender_configured": bool(os.getenv('SENDER_EMAIL')) if EMAIL_SERVICE_AVAILABLE else False,
+        "email_service_type": EMAIL_SERVICE_TYPE,
+        "api_provider": "Gmail SMTP" if EMAIL_SERVICE_AVAILABLE else None,
+        "from_email": email_service.from_email if EMAIL_SERVICE_AVAILABLE else None,
+        "api_key_configured": bool(email_service.api_key) if EMAIL_SERVICE_AVAILABLE else False,
         "instructions": {
-            "setup": "Set SENDER_EMAIL and SENDER_PASSWORD environment variables",
-            "gmail_setup": "Use Gmail App Password for SENDER_PASSWORD",
-            "example": "SENDER_EMAIL=your-email@gmail.com SENDER_PASSWORD=your-app-password"
+            "setup": "Use Gmail with an App Password",
+            "free_tier": "Free — uses Python built-in smtplib, no third-party service",
+            "env_variable": "Set GMAIL_USER and GMAIL_APP_PASSWORD in .env",
+            "example": "GMAIL_USER=you@gmail.com, GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx"
         }
     })
 
 if __name__ == '__main__':
-    print("🚀 Starting Attendance Risk Prediction API...")
-    print("📊 Models loaded:", decision_tree_model is not None and logistic_model is not None)
-    print("🌐 Server will be available at: http://localhost:5000")
-    print("📖 API documentation: http://localhost:5000")
+    print("[START] Starting Attendance Risk Prediction API...")
+    print("[INFO] Models loaded:", decision_tree_model is not None and logistic_model is not None)
+    print("[INFO] Server will be available at: http://localhost:5000")
+    print("[INFO] API documentation: http://localhost:5000")
     app.run(debug=True, host='127.0.0.1', port=5000, use_reloader=False)
