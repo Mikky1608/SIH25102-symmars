@@ -47,16 +47,29 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Backend API URL
-import os
-API_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:5000")
+# Backend API URL handling
+try:
+    if "BACKEND_URL" in st.secrets:
+        API_URL = st.secrets["BACKEND_URL"]
+    else:
+        import os
+        API_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:5000")
+except:
+    import os
+    API_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:5000")
+
+# Ensure consistency
+API_URL = API_URL.strip().rstrip('/')
 
 def check_api_health():
     """Check if the backend API is running"""
     try:
         response = requests.get(f"{API_URL}/health", timeout=5)
-        return response.status_code == 200
-    except:
-        return False
+        if response.status_code == 200:
+            return True, "Healthy"
+        return False, f"API returned status {response.status_code}"
+    except Exception as e:
+        return False, f"Connection failed: {str(e)}"
 
 def predict_risk(student_data):
     """Send prediction request to backend API"""
@@ -108,12 +121,18 @@ def main():
     st.markdown("**AI-powered early warning system for student attendance risk prediction**")
     
     # Check API status
-    api_status = check_api_health()
-    if api_status:
+    api_success, api_message = check_api_health()
+    if api_success:
         st.success("✅ Backend API is running")
     else:
-        st.error("❌ Backend API is not accessible. Please start the backend server first.")
-        st.info("Run: `python backend/app.py` in your terminal")
+        st.error(f"❌ Backend API is not accessible: {api_message}")
+        st.info(f"Current API URL: `{API_URL}`")
+        st.markdown(f"""
+        **Troubleshooting steps:**
+        1. Ensure your **Railway backend** is running and shows "Success".
+        2. Verify you added `BACKEND_URL` in **Streamlit Cloud Settings > Secrets**.
+        3. Double-check the URL matches your Railway public domain.
+        """)
         return
     
     # Sidebar
