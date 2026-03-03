@@ -232,8 +232,6 @@ def send_risk_email():
         data = request.json
         
         print(f"[EMAIL] Received email request for: {data.get('student_name', 'Unknown')}")
-        print(f"[EMAIL] Email service type: {EMAIL_SERVICE_TYPE}")
-        print(f"[EMAIL] Email service class: {type(email_service)}")
         
         if not data:
             return jsonify({"error": "No data provided"}), 400
@@ -248,13 +246,11 @@ def send_risk_email():
         if data['risk_level'] not in ['Medium', 'High']:
             return jsonify({
                 "success": False,
-                "message": f"No email sent - risk level is {data['risk_level']} (only Medium/High risk students receive emails)"
+                "message": f"No email sent - risk level is {data['risk_level']}"
             })
         
         # Create email template and send
-        print(f"[EMAIL] Creating email template...")
         subject, html_content, text_content = email_service.create_risk_email_template(data, data['risk_level'])
-        print(f"[EMAIL] Sending email to: {data['student_email']}")
         result = email_service.send_email(
             data['student_email'], 
             subject, 
@@ -262,7 +258,6 @@ def send_risk_email():
             text_content
         )
         
-        print(f"[EMAIL] Email result: {result}")
         return jsonify(result)
         
     except Exception as e:
@@ -314,8 +309,7 @@ def get_email_config():
     })
 
 if __name__ == '__main__':
-    print("[START] Starting Attendance Risk Prediction API...")
-    print("[INFO] Models loaded:", decision_tree_model is not None and logistic_model is not None)
-    print("[INFO] Server will be available at: http://localhost:5000")
-    print("[INFO] API documentation: http://localhost:5000")
-    app.run(debug=True, host='127.0.0.1', port=5000, use_reloader=False)
+    # Use PORT from environment variable (default to 5000)
+    port = int(os.environ.get("PORT", 5000))
+    # Bind to 0.0.0.0 for deployment
+    app.run(debug=False, host='0.0.0.0', port=port)
