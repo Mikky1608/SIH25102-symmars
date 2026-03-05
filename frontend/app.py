@@ -99,7 +99,7 @@ def send_batch_emails(students_data):
     """Send batch emails to at-risk students"""
     try:
         response = requests.post(f"{API_URL}/send-batch-emails", json={"students": students_data}, timeout=120)  # Increased timeout
-        if response.status_code == 200:
+        if response.status_code in [200, 202]:
             return response.json()
         else:
             return {"error": f"API Error: {response.status_code}"}
