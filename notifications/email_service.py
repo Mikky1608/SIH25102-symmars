@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Dict, List
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor
+import socket
 
 # Load environment variables from project root
 env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
@@ -74,23 +75,36 @@ class EmailService:
             if text_content:
                 msg.attach(MIMEText(text_content, 'plain'))
             msg.attach(MIMEText(html_content, 'html'))
-
-            # Try Port 465 (SSL) first
+            
+            # Save original getaddrinfo to restore later
+            original_getaddrinfo = socket.getaddrinfo
             try:
-                logger.info(f"[SMTP] Trying {self.smtp_host}:{self.smtp_port} (SSL)...")
-                with smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=5) as server:
-                    server.login(self.gmail_user, self.gmail_password)
-                    server.sendmail(self.gmail_user, to_email, msg.as_string())
-                logger.info(f"[OK] Email sent successfully to {to_email} via port 465")
-            except (smtplib.SMTPException, ConnectionError, TimeoutError, OSError) as e:
-                logger.warning(f"[WARN] Port 465 failed: {e}. Trying port 587 (STARTTLS)...")
+                # Force IPv4 connection to avoid 'Network is unreachable' issues with IPv6 in cloud environments
+                def ipv4_getaddrinfo(*args, **kwargs):
+                    res = original_getaddrinfo(*args, **kwargs)
+                    return [r for r in res if r[0] == socket.AF_INET]
                 
-                # Fallback to Port 587 (STARTTLS)
-                with smtplib.SMTP(self.smtp_host, self.smtp_alt_port, timeout=5) as server:
-                    server.starttls()
-                    server.login(self.gmail_user, self.gmail_password)
-                    server.sendmail(self.gmail_user, to_email, msg.as_string())
-                logger.info(f"[OK] Email sent successfully to {to_email} via port 587")
+                socket.getaddrinfo = ipv4_getaddrinfo
+                
+                # Try Port 465 (SSL) first
+                try:
+                    logger.info(f"[SMTP] Trying {self.smtp_host}:{self.smtp_port} (SSL)...")
+                    with smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=5) as server:
+                        server.login(self.gmail_user, self.gmail_password)
+                        server.sendmail(self.gmail_user, to_email, msg.as_string())
+                    logger.info(f"[OK) Email sent successfully to {to_email} via port 465")
+                except (smtplib.SMTPException, ConnectionError, TimeoutError, OSError) as e:
+                    logger.warning(f"[WARN] Port 465 failed: {e}. Trying port 587 (STARTTLS)...")
+                    
+                    # Fallback to Port 587 (STARTTLS)
+                    with smtplib.SMTP(self.smtp_host, self.smtp_alt_port, timeout=5) as server:
+                        server.starttls()
+                        server.login(self.gmail_user, self.gmail_password)
+                        server.sendmail(self.gmail_user, to_email, msg.as_string())
+                    logger.info(f"[OK] Email sent successfully to {to_email} via port 587")
+            finally:
+                # Restore original getaddrinfo
+                socket.getaddrinfo = original_getaddrinfo
 
             return {
                 "success": True,
