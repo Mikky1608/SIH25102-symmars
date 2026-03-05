@@ -441,32 +441,14 @@ def batch_prediction():
                             with st.spinner("Sending email notifications..."):
                                 email_result = send_batch_emails(students_for_email)
                             
-                            if "error" in email_result:
-                                st.error(f"❌ Email sending failed: {email_result['error']}")
-                            else:
-                                summary = email_result.get('summary', {})
-                                
-                                # Show visual "Pop up" notifications
-                                st.balloons()
-                                st.toast("✅ All emails have been processed successfully!", icon='📧')
-                                
-                                st.success(f"✅ Email notifications sent successfully!")
-                                
-                                # Show email summary in a nice card
-                                with st.container():
-                                    col_a, col_b, col_c = st.columns(3)
-                                    # Ensure summary is a dict for linting/runtime safety
-                                    safe_summary = summary if isinstance(summary, dict) else {}
-                                    col_a.metric("📧 Emails Sent", safe_summary.get('emails_sent', 0))
-                                    col_b.metric("❌ Failed", safe_summary.get('emails_failed', 0))
-                                    col_c.metric("📊 Processed", safe_summary.get('total_processed', 0))
-                                
-                                # Show detailed results
-                                if st.checkbox("🔍 Show detailed email logs"):
-                                    details = email_result.get('details', [])
-                                    email_details_df = pd.DataFrame(details)
-                                    if not email_details_df.empty:
-                                        st.dataframe(email_details_df[['student_name', 'student_email', 'risk_level', 'success', 'message']], use_container_width=True)
+                                if email_result.get('success'):
+                                    st.balloons()
+                                    st.success(f"✅ {email_result.get('message', 'Email sending process started!')}")
+                                    st.toast("📧 Email process initiated in the background.", icon='📧')
+                                    st.info(f"Total students queued: {email_result.get('batch_size', len(students_for_email))}")
+                                    st.markdown("⚠️ *Emails are being sent in the background. It may take a minute for all students to receive them.*")
+                                else:
+                                    st.error(f"❌ Email sending failed: {email_result.get('error', 'Unknown error')}")
                     else:
                         st.info("✅ No students require email notifications (all are Low risk)")
                     

@@ -11,9 +11,11 @@ from email.mime.text import MIMEText
 from datetime import datetime
 from typing import Dict, List
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from project root
+env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+load_dotenv(env_path)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -31,7 +33,8 @@ class EmailService:
         self.from_name = os.getenv('FROM_NAME', 'Student Success Center')
         self.admin_email = os.getenv('ADMIN_EMAIL', self.gmail_user)
         self.smtp_host = 'smtp.gmail.com'
-        self.smtp_port = 465  # SSL
+        self.smtp_port = 465  # SSL (primary)
+        self.smtp_alt_port = 587  # STARTTLS (fallback)
 
         # Demo mode — redirect all emails to one address for testing
         self.demo_mode = os.getenv('DEMO_MODE', 'false').lower() == 'true'
@@ -72,13 +75,23 @@ class EmailService:
                 msg.attach(MIMEText(text_content, 'plain'))
             msg.attach(MIMEText(html_content, 'html'))
 
-            # Send via Gmail SMTP SSL
-            logger.info(f"[SMTP] Connecting to {self.smtp_host}:{self.smtp_port}")
-            with smtplib.SMTP_SSL(self.smtp_host, self.smtp_port) as server:
-                server.login(self.gmail_user, self.gmail_password)
-                server.sendmail(self.gmail_user, to_email, msg.as_string())
+            # Try Port 465 (SSL) first
+            try:
+                logger.info(f"[SMTP] Trying {self.smtp_host}:{self.smtp_port} (SSL)...")
+                with smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=5) as server:
+                    server.login(self.gmail_user, self.gmail_password)
+                    server.sendmail(self.gmail_user, to_email, msg.as_string())
+                logger.info(f"[OK] Email sent successfully to {to_email} via port 465")
+            except (smtplib.SMTPException, ConnectionError, TimeoutError, OSError) as e:
+                logger.warning(f"[WARN] Port 465 failed: {e}. Trying port 587 (STARTTLS)...")
+                
+                # Fallback to Port 587 (STARTTLS)
+                with smtplib.SMTP(self.smtp_host, self.smtp_alt_port, timeout=5) as server:
+                    server.starttls()
+                    server.login(self.gmail_user, self.gmail_password)
+                    server.sendmail(self.gmail_user, to_email, msg.as_string())
+                logger.info(f"[OK] Email sent successfully to {to_email} via port 587")
 
-            logger.info(f"[OK] Email sent successfully to {to_email}")
             return {
                 "success": True,
                 "message": "Email sent successfully via Gmail SMTP",
@@ -197,45 +210,49 @@ CONTACT:
         return subject, html, text
 
     def send_batch_emails(self, students_data: List[Dict]) -> Dict:
-        """Send emails to multiple students (Medium/High risk only)."""
+        """Send emails to multiple students in parallel using a thread pool."""
         total_processed = len(students_data)
-        sent_count = 0
-        failed_count = 0
         results = []
-
+        
+        # Prepare valid students (Medium/High risk only)
+        at_risk_students = [s for s in students_data if s.get('risk_level', 'Low') in ['Medium', 'High']]
+        skipped_count = total_processed - len(at_risk_students)
+        
         for student in students_data:
-            risk_level = student.get('risk_level', 'Low')
-
-            if risk_level not in ['Medium', 'High']:
+            if student.get('risk_level', 'Low') not in ['Medium', 'High']:
                 results.append({
                     'student_name': student.get('student_name'),
                     'status': 'skipped',
-                    'message': 'Low risk — no email needed'
+                    'message': 'Low risk — no email needed',
+                    'success': True
                 })
-                continue
 
-            subject, html, text = self.create_risk_email_template(student, risk_level)
+        def process_student(student):
+            subject, html, text = self.create_risk_email_template(student, student.get('risk_level'))
             result = self.send_email(
                 student.get('student_email', ''),
                 subject,
                 html,
                 text
             )
+            return {
+                'student_name': student.get('student_name'),
+                'student_email': student.get('student_email'),
+                'risk_level': student.get('risk_level'),
+                'status': 'sent' if result['success'] else 'failed',
+                'success': result['success'],
+                'message': result.get('message', '')
+            }
 
-            if result['success']:
-                sent_count += 1
-                results.append({
-                    'student_name': student.get('student_name'),
-                    'status': 'sent',
-                    'message': result.get('message', '')
-                })
-            else:
-                failed_count += 1
-                results.append({
-                    'student_name': student.get('student_name'),
-                    'status': 'failed',
-                    'message': result.get('message', '')
-                })
+        # Send in parallel (limit to 5 threads to avoid Gmail rate limiting)
+        if at_risk_students:
+            logger.info(f"[BATCH] Sending {len(at_risk_students)} emails in parallel...")
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                parallel_results = list(executor.map(process_student, at_risk_students))
+                results.extend(parallel_results)
+
+        sent_count = sum(1 for r in results if r.get('status') == 'sent')
+        failed_count = sum(1 for r in results if r.get('status') == 'failed')
 
         return {
             'total_processed': total_processed,

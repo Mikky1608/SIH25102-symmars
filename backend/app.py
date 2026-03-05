@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import os
 import sys
+import threading
 
 # Fix Unicode output on Windows
 if sys.stdout.encoding != 'utf-8':
@@ -265,7 +266,7 @@ def send_risk_email():
 
 @app.route('/send-batch-emails', methods=['POST'])
 def send_batch_risk_emails():
-    """Send risk notification emails to multiple students"""
+    """Start background process to send batch risk notification emails"""
     if not EMAIL_SERVICE_AVAILABLE:
         return jsonify({"error": "Email service not available"}), 503
     
@@ -275,18 +276,25 @@ def send_batch_risk_emails():
         if not data or 'students' not in data:
             return jsonify({"error": "No student data provided"}), 400
         
-        # Send batch emails
-        results = email_service.send_batch_emails(data['students'])
+        # Start background thread to send emails
+        # This prevents the request from timing out on the frontend
+        def background_send():
+            print(f"[BACKGROUND] Starting batch email send for {len(data['students'])} students...")
+            email_service.send_batch_emails(data['students'])
+            print("[BACKGROUND] Batch email send process finished.")
+
+        thread = threading.Thread(target=background_send)
+        thread.daemon = True
+        thread.start()
         
         return jsonify({
             "success": True,
-            "summary": {
-                "total_processed": results['total_processed'],
-                "emails_sent": results['sent_count'],
-                "emails_failed": results['failed_count']
-            },
-            "details": results['results']
-        })
+            "message": "Email sending process started in the background. Check server logs for progress.",
+            "batch_size": len(data['students'])
+        }), 202
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -305,6 +313,35 @@ def get_email_config():
             "free_tier": "Free — uses Python built-in smtplib, no third-party service",
             "env_variable": "Set GMAIL_USER and GMAIL_APP_PASSWORD in .env",
             "example": "GMAIL_USER=you@gmail.com, GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx"
+        }
+    })
+
+@app.route('/test-email', methods=['GET'])
+def test_email():
+    """Send a test email to the admin/sender address"""
+    if not EMAIL_SERVICE_AVAILABLE:
+        return jsonify({"success": False, "error": "Email service not configured"}), 503
+    
+    test_data = {
+        "student_name": "Diagnostic Test",
+        "student_id": "TEST-123",
+        "risk_score": 0.85,
+        "Average_Attendance": 45.0,
+        "Attendance_Decline_Score": 12.0,
+        "student_email": email_service.admin_email,
+        "risk_level": "High"
+    }
+    
+    # Use the synchronous send for the test to get immediate feedback in the browser
+    subject, html, text = email_service.create_risk_email_template(test_data, "High")
+    result = email_service.send_email(email_service.admin_email, subject, html, text)
+    
+    return jsonify({
+        "info": "This endpoint sends a diagnostic email to yourself",
+        "diagnostic_result": result,
+        "config": {
+            "user": email_service.gmail_user,
+            "password_configured": bool(email_service.gmail_password)
         }
     })
 
